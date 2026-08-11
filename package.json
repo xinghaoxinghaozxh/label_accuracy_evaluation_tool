@@ -1,0 +1,52 @@
+{
+  "name": "label-accuracy-evaluator",
+  "version": "1.0.0",
+  "description": "标签准确率评测工具 - 桌面版",
+  "main": "main.js",
+  "author": "EvalTool",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:mac": "electron-builder --mac --x64 --publish never"
+  },
+  "build": {
+    "appId": "com.evaltool.labelaccuracy",
+    "productName": "标签准确率评测工具",
+    "copyright": "Copyright © 2026 EvalTool",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "public/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "artifactName": "${productName}-${version}-win.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "标签准确率评测工具"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.utilities",
+      "artifactName": "${productName}-${version}-mac.${ext}"
+    },
+    "dmg": {
+      "title": "${productName} ${version}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^30.0.9",
+    "electron-builder": "^24.13.3"
+  }
+}

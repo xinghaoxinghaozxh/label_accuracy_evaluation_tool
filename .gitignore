@@ -1,0 +1,20 @@
+# 依赖与构建产物
+node_modules/
+dist/
+build-win.log
+build-mac.log
+
+# 临时/打包中间物
+*.7z
+_wcs/
+winCodeSign-*.7z
+wc.7z
+_defender.log
+build/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 开发目录（不应进入仓库）
+.workbuddy/

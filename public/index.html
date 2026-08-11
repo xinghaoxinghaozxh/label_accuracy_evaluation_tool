@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>标签准确率评测工具</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<!-- ====== 上传界面 ====== -->
+<div id="screen-upload" class="screen active">
+  <div class="upload-container">
+    <div class="logo">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M9 11l3 3L22 4"/>
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+      </svg>
+    </div>
+    <h1>标签准确率评测工具</h1>
+    <p class="subtitle">上传表格文件，添加规则号与标签名称，开始多标签评测</p>
+
+    <form id="upload-form">
+      <div class="form-group">
+        <label for="file-input">表格文件（Excel / CSV）</label>
+        <div class="file-input-wrapper">
+          <input type="file" id="file-input" accept=".xlsx,.xls,.csv" required>
+          <div class="file-input-display" id="file-display">点击或拖拽文件到此处</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="rules-textarea">规则号与标签名称（每行一组，规则号与标签名用 Tab 分隔）</label>
+        <textarea id="rules-textarea" rows="8" placeholder="示例格式（规则号 + Tab键 + 标签名称，每行一组）：&#10;EA001041002092101	动漫角色：派拉蒙全球：蓝精灵：蓝妹妹&#10;EA001041007090103	动漫角色：万代南梦宫：LoveLive!：高坂穗乃果&#10;EA001043001984103	影视角色：迪士尼：楼中谋杀案：梅布尔·莫拉"></textarea>
+        <div class="pair-count-hint" id="pair-count-hint">已识别：0 组</div>
+      </div>
+
+      <button type="submit" class="btn-primary btn-large">开始评测</button>
+    </form>
+
+    <div class="upload-tips">
+      <p>表格需包含以下列：图片URL、视频截帧URL、实验室命中规则集</p>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 加载界面 ====== -->
+<div id="screen-loading" class="screen">
+  <div class="loading-container">
+    <div class="spinner"></div>
+    <p id="loading-text" class="loading-text">正在处理数据...</p>
+    <div class="progress-bar-container">
+      <div id="loading-progress-bar" class="progress-bar" style="width:0%"></div>
+    </div>
+    <p id="loading-count" class="loading-count"></p>
+  </div>
+</div>
+
+<!-- ====== 评测界面 ====== -->
+<div id="screen-annotate" class="screen">
+  <div class="annotate-header">
+    <div class="annotate-info">
+      <span class="tag-badge" id="info-total-tasks">子任务: --</span>
+      <span class="tag-badge alt" id="info-completed-tasks">已完成: 0</span>
+    </div>
+    <div class="annotate-actions">
+      <button id="export-btn" class="btn-secondary" style="display:none;">导出结果（Excel）</button>
+      <button id="new-eval-btn" class="btn-primary" style="display:none;">开始新评测</button>
+    </div>
+  </div>
+
+  <div id="subtask-list" class="subtask-list"></div>
+
+  <div id="results-section" class="results-section" style="display:none;">
+    <h2>评测结果汇总</h2>
+    <div class="results-table-wrapper">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>标签名称</th>
+            <th>规则号</th>
+            <th>命中数量</th>
+            <th>评测数据量</th>
+            <th>准确率</th>
+            <th>问题备注</th>
+          </tr>
+        </thead>
+        <tbody id="results-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

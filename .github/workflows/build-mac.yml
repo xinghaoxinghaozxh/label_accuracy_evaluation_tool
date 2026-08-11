@@ -1,0 +1,56 @@
+name: Build macOS Release
+
+# 在 macOS runner 上构建 .dmg 安装包。
+# 触发方式：
+#   1) 推送 tag（如 v1.0.0）时自动构建并发布到 GitHub Releases；
+#   2) 在 Actions 页面手动 Run workflow。
+#
+# 说明：本工作流为「未签名」构建，产物可在 Mac 上通过
+#   «右键/Control+点击 → 打开» 或 «系统设置 → 隐私与安全性 → 仍要打开» 运行。
+# 若需正式公证（双击即开、无拦截），请配置 Apple 开发者证书并在下方 secrets 中
+# 填写 APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID，同时取消 package.json
+# 中 mac.identity 等签名配置注释。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build macOS dmg (unsigned)
+        run: npm run dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Upload dmg as workflow artifact
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-dmg
+          path: dist/*.dmg
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
