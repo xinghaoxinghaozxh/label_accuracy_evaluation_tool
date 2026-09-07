@@ -12,9 +12,9 @@ const state = {
   videoUrlCol: null,
   ruleSetCol: null,
   pipelineRunning: false, // 子任务创建管线是否在运行
+  targetCount: 100,      // 每个任务抽取的数据条数（100~600）
 };
 
-const TARGET_COUNT = 100;
 const IMAGE_TIMEOUT = 15000;
 const MAX_PAIRS = 10;
 
@@ -138,6 +138,10 @@ function initUpload() {
     for (const p of pairs) {
       if (!p.rule || !p.label) { alert('存在格式不正确的行，请确保每行格式为：规则号 + Tab + 标签名称'); return; }
     }
+
+    // 读取「每个任务抽取的数据条数」
+    const sc = parseInt($('sample-count').value, 10);
+    state.targetCount = (sc >= 100 && sc <= 600) ? sc : 100;
 
     // 重置状态
     state.subtasks = [];
@@ -316,7 +320,7 @@ async function prepareSubtask(subtask) {
 }
 
 async function loadImagesLoop(subtask) {
-  const target = Math.min(TARGET_COUNT, subtask.totalCount);
+  const target = Math.min(state.targetCount, subtask.totalCount);
 
   while (subtask.displayItems.length < target) {
     const needed = target - subtask.displayItems.length;
@@ -477,12 +481,13 @@ function expandNextSubtask(fromIndex) {
   const isPending = (s) => s.status === 'active' || s.status === 'loading';
   // 先往后找
   for (let i = fromIndex + 1; i < state.subtasks.length; i++) {
-    if (isPending(state.subtasks[i])) { expandSubtask(i); return; }
+    if (isPending(state.subtasks[i])) { expandSubtask(i); return i; }
   }
   // 再从头找（处理尚未轮到的）
   for (let i = 0; i < fromIndex; i++) {
-    if (isPending(state.subtasks[i])) { expandSubtask(i); return; }
+    if (isPending(state.subtasks[i])) { expandSubtask(i); return i; }
   }
+  return -1;
 }
 
 // ===== 标注操作 =====
@@ -572,8 +577,37 @@ function completeSubtask(subtaskIndex) {
   renderResultsTable();
   updateOverallStatus();
 
-  // 自动展开下一个待评测子任务
-  expandNextSubtask(subtaskIndex);
+  // 自动展开下一个待评测子任务，并定位到它
+  const nextIndex = expandNextSubtask(subtaskIndex);
+  requestAnimationFrame(() => scrollToSubtaskTop(nextIndex));
+}
+
+// 评测完成后把页面滚回顶部（没有下一个任务时的兜底）
+function scrollPageToTop() {
+  try {
+    window.scrollTo(0, 0);
+  } catch (_) {}
+  const el = document.scrollingElement || document.documentElement || document.body;
+  if (el) el.scrollTop = 0;
+}
+
+// 滚动到指定子任务面板的标题位置；index < 0 或找不到时回到页面顶部
+function scrollToSubtaskTop(index) {
+  const panel = index >= 0
+    ? document.querySelector('.subtask-panel[data-subtask="' + index + '"]')
+    : null;
+  if (!panel) { scrollPageToTop(); return; }
+  try {
+    const top = panel.getBoundingClientRect().top + (window.pageYOffset || 0) - 16;
+    window.scrollTo(0, Math.max(top, 0));
+  } catch (_) {
+    scrollPageToTop();
+    return;
+  }
+  const el = document.scrollingElement || document.documentElement || document.body;
+  if (el && el.scrollTop === 0 && panel.getBoundingClientRect().top > 4) {
+    panel.scrollIntoView({ block: 'start' });
+  }
 }
 
 function updateSubtaskResult(subtaskIndex) {
@@ -590,6 +624,8 @@ function updateSubtaskResult(subtaskIndex) {
   renderSubtaskList();
   renderResultsTable();
   updateOverallStatus();
+
+  requestAnimationFrame(() => scrollToSubtaskTop(subtaskIndex));
 }
 
 function calculateResult(subtask) {
@@ -636,9 +672,11 @@ function updateOverallStatus() {
   const allDone = total > 0 && completed === total && !state.pipelineRunning;
 
   if (allDone) {
+    $('export-data-btn').style.display = '';
     $('export-btn').style.display = '';
     $('new-eval-btn').style.display = '';
   } else {
+    $('export-data-btn').style.display = 'none';
     $('export-btn').style.display = 'none';
     $('new-eval-btn').style.display = 'none';
   }
@@ -660,8 +698,22 @@ function downloadResults() {
 
   const ws = XLSX.utils.json_to_sheet(data);
   ws['!cols'] = [{ wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 40 }];
+
+  // 第二个 sheet：所有被抽样评测数据的明细
+  const detailAoa = [['规则号', '标签名称', 'URL', '标注结果']];
+  completed.forEach((s) => {
+    (s.displayItems || []).forEach((item) => {
+      const anno = item.annotation === 'correct' ? '正确'
+        : (item.annotation === 'error' ? '错误' : '未标注');
+      detailAoa.push([s.rule, s.label, item.url, anno]);
+    });
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(detailAoa);
+  ws2['!cols'] = [{ wch: 16 }, { wch: 24 }, { wch: 70 }, { wch: 10 }];
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '评测结果');
+  XLSX.utils.book_append_sheet(wb, ws2, '抽样明细');
   XLSX.writeFile(wb, '评测结果汇总.xlsx');
 }
 
@@ -685,6 +737,167 @@ function startNewEvaluation() {
   $('results-tbody').innerHTML = '';
 
   showScreen('upload');
+}
+
+// ===== 导出数据（第 5、6 步 + 泛化数据包）=====
+
+// 当前勾选的「标注结果」筛选值：all / correct / error
+function getExportAnnoFilter() {
+  const checked = document.querySelector('input[name="export-anno"]:checked');
+  return checked ? checked.value : 'all';
+}
+
+// 当前勾选的子任务
+function getSelectedSubtasks() {
+  const picked = [];
+  document.querySelectorAll('#export-task-list input[type="checkbox"]').forEach((b) => {
+    if (b.checked) picked.push(state.subtasks[parseInt(b.value, 10)]);
+  });
+  return picked;
+}
+
+// 某子任务中「已标注」的数据（标注结果存于 displayItems）
+function collectAnnotated(subtask, filter) {
+  return (subtask.displayItems || []).filter((i) => {
+    if (i.annotation !== 'correct' && i.annotation !== 'error') return false;
+    if (filter === 'correct') return i.annotation === 'correct';
+    if (filter === 'error') return i.annotation === 'error';
+    return true;
+  });
+}
+
+// 某子任务中「未被抽样」的数据（窄范围：该规则命中但没被抽到）
+function collectUnsampled(subtask) {
+  return (subtask.allFilteredData || []).filter((item) => !subtask.sampledIds.has(item.id));
+}
+
+function annoText(v) {
+  return v === 'correct' ? '正确' : v === 'error' ? '错误' : '';
+}
+
+// 打开面板：渲染标签勾选列表
+function openExportModal() {
+  const list = $('export-task-list');
+  list.innerHTML = '';
+  const usable = state.subtasks.filter((s) => s.displayItems && s.displayItems.length > 0);
+  if (usable.length === 0) { alert('当前没有可导出的数据。'); return; }
+
+  usable.forEach((subtask) => {
+    const idx = state.subtasks.indexOf(subtask);
+    const items = subtask.displayItems || [];
+    const correct = items.filter((i) => i.annotation === 'correct').length;
+    const error = items.filter((i) => i.annotation === 'error').length;
+    const unsampled = collectUnsampled(subtask).length;
+
+    const row = document.createElement('label');
+    row.className = 'export-task-item';
+    row.innerHTML =
+      '<input type="checkbox" value="' + idx + '" checked>' +
+      '<span class="eti-main"><span class="eti-label">' + escapeHtml(subtask.label) + '</span>' +
+      '<span class="eti-rule">规则号 ' + escapeHtml(subtask.rule) + '</span></span>' +
+      '<span class="eti-count">正确 ' + correct + ' ｜ 错误 ' + error + ' ｜ 未抽样 ' + unsampled + '</span>';
+    list.appendChild(row);
+  });
+
+  $('export-modal').style.display = '';
+  updateExportSummary();
+}
+
+function closeExportModal() {
+  $('export-modal').style.display = 'none';
+}
+
+function setExportTasksChecked(v) {
+  document.querySelectorAll('#export-task-list input[type="checkbox"]').forEach((b) => { b.checked = v; });
+  updateExportSummary();
+}
+
+function updateExportSummary() {
+  const picked = getSelectedSubtasks();
+  const filter = getExportAnnoFilter();
+  let annotated = 0, unsampled = 0;
+  picked.forEach((st) => {
+    annotated += collectAnnotated(st, filter).length;
+    unsampled += collectUnsampled(st).length;
+  });
+  const ftext = filter === 'correct' ? '仅正确' : filter === 'error' ? '仅错误' : '全部';
+  $('export-summary').textContent =
+    '已选 ' + picked.length + ' 个标签 ｜ 标注结果：' + ftext +
+    ' ｜ 标注数据 ' + annotated + ' 条；泛化比对库 ' + unsampled + ' 条（未抽样）';
+}
+
+// 第 6 步：详细结果表（规则标识 / 规则名称 / 数据行ID / URL / 标注结果）
+function exportDetailTable() {
+  const picked = getSelectedSubtasks();
+  if (picked.length === 0) { alert('请至少选择一个标签。'); return; }
+  const filter = getExportAnnoFilter();
+
+  const rows = [];
+  picked.forEach((st) => {
+    collectAnnotated(st, filter).forEach((item) => {
+      rows.push({
+        '规则标识': st.rule,
+        '规则名称': st.label,
+        '数据行ID': item.id,
+        'URL': item.url,
+        '标注结果': annoText(item.annotation),
+      });
+    });
+  });
+  if (rows.length === 0) { alert('所选条件下没有数据可导出。'); return; }
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{ wch: 16 }, { wch: 32 }, { wch: 10 }, { wch: 60 }, { wch: 10 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '标注明细');
+  XLSX.writeFile(wb, '标注结果明细.xlsx');
+  closeExportModal();
+}
+
+// 第 7 步：泛化数据包 —— 已标注数据（种子）+ 未抽样数据（比对库），供 Python 脚本使用
+function exportGeneralizePackage() {
+  const picked = getSelectedSubtasks();
+  if (picked.length === 0) { alert('请至少选择一个标签。'); return; }
+  const filter = getExportAnnoFilter();
+
+  const rows = [];
+  picked.forEach((st) => {
+    collectAnnotated(st, filter).forEach((item) => {
+      rows.push({
+        '规则标识': st.rule,
+        '规则名称': st.label,
+        '数据行ID': item.id,
+        'URL': item.url,
+        '数据类型': '已标注',
+        '标注结果': annoText(item.annotation),
+      });
+    });
+    collectUnsampled(st).forEach((item) => {
+      rows.push({
+        '规则标识': st.rule,
+        '规则名称': st.label,
+        '数据行ID': item.id,
+        'URL': item.url,
+        '数据类型': '未抽样',
+        '标注结果': '',
+      });
+    });
+  });
+  if (rows.length === 0) { alert('所选条件下没有数据可导出。'); return; }
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const csv = XLSX.utils.sheet_to_csv(ws);
+  // 加 BOM，保证中文 Excel 打开不乱码（Python 端用 utf-8-sig 读取即可）
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '泛化数据包.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  closeExportModal();
 }
 
 // ===== 事件绑定（事件委托）=====
@@ -751,8 +964,23 @@ function bindAnnotateEvents() {
     }
   }, true);
 
-  // 导出
+  // 导出结果汇总
   $('export-btn').addEventListener('click', downloadResults);
+
+  // 导出数据（打开选择面板）
+  $('export-data-btn').addEventListener('click', openExportModal);
+  $('export-cancel-btn').addEventListener('click', closeExportModal);
+  $('export-select-all').addEventListener('click', () => setExportTasksChecked(true));
+  $('export-select-none').addEventListener('click', () => setExportTasksChecked(false));
+  $('export-detail-btn').addEventListener('click', exportDetailTable);
+  $('export-generalize-btn').addEventListener('click', exportGeneralizePackage);
+  document.querySelectorAll('input[name="export-anno"]').forEach((r) => {
+    r.addEventListener('change', updateExportSummary);
+  });
+  $('export-task-list').addEventListener('change', updateExportSummary);
+  $('export-modal').addEventListener('click', (e) => {
+    if (e.target === $('export-modal')) closeExportModal();
+  });
 
   // 开始新评测
   $('new-eval-btn').addEventListener('click', startNewEvaluation);

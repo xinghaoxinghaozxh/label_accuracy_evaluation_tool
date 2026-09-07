@@ -11,10 +11,27 @@ winCodeSign-*.7z
 wc.7z
 _defender.log
 build/
+_e_tmp/
+_asar_stage/
+_smoke*.log
+_probe*.js
+_wtest.js
+_p2.js
 
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 运行时错误日志（调试用，勿提交）
+评测工具运行日志.txt
+_diag.log
+_run.log
+diag_run.log
+启动诊断.log
+
+# 泛化脚本运行产物（图片缓存 / 导出的数据包）
+泛化脚本/image_cache/
+泛化脚本/泛化数据包.csv
 
 # 开发目录（不应进入仓库）
 .workbuddy/

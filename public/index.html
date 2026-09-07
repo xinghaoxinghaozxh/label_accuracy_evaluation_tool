@@ -36,6 +36,18 @@
         <div class="pair-count-hint" id="pair-count-hint">已识别：0 组</div>
       </div>
 
+      <div class="form-group">
+        <label for="sample-count">每个任务抽取的数据条数</label>
+        <select id="sample-count" class="form-control">
+          <option value="100">100 条</option>
+          <option value="200">200 条</option>
+          <option value="300">300 条</option>
+          <option value="400">400 条</option>
+          <option value="500">500 条</option>
+          <option value="600">600 条</option>
+        </select>
+      </div>
+
       <button type="submit" class="btn-primary btn-large">开始评测</button>
     </form>
 
@@ -64,10 +76,11 @@
       <span class="tag-badge" id="info-total-tasks">子任务: --</span>
       <span class="tag-badge alt" id="info-completed-tasks">已完成: 0</span>
     </div>
-    <div class="annotate-actions">
-      <button id="export-btn" class="btn-secondary" style="display:none;">导出结果（Excel）</button>
-      <button id="new-eval-btn" class="btn-primary" style="display:none;">开始新评测</button>
-    </div>
+      <div class="annotate-actions">
+        <button id="export-data-btn" class="btn-secondary" style="display:none;">导出数据</button>
+        <button id="export-btn" class="btn-secondary" style="display:none;">导出结果汇总（Excel）</button>
+        <button id="new-eval-btn" class="btn-primary" style="display:none;">开始新评测</button>
+      </div>
   </div>
 
   <div id="subtask-list" class="subtask-list"></div>
@@ -88,6 +101,41 @@
         </thead>
         <tbody id="results-tbody"></tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 导出数据选择面板 ====== -->
+<div id="export-modal" class="modal-mask" style="display:none;">
+  <div class="modal-box">
+    <h3 class="modal-title">导出数据</h3>
+
+    <div class="modal-section">
+      <div class="modal-section-head">
+        <span class="modal-label">选择标签</span>
+        <span class="modal-inline-actions">
+          <button type="button" id="export-select-all" class="btn-link">全选</button>
+          <button type="button" id="export-select-none" class="btn-link">全不选</button>
+        </span>
+      </div>
+      <div id="export-task-list" class="export-task-list"></div>
+    </div>
+
+    <div class="modal-section">
+      <span class="modal-label">标注结果</span>
+      <div class="radio-row">
+        <label class="radio-item"><input type="radio" name="export-anno" value="all" checked> 全部</label>
+        <label class="radio-item"><input type="radio" name="export-anno" value="correct"> 仅正确</label>
+        <label class="radio-item"><input type="radio" name="export-anno" value="error"> 仅错误</label>
+      </div>
+    </div>
+
+    <div id="export-summary" class="export-summary">已选 0 个标签</div>
+
+    <div class="modal-footer">
+      <button type="button" id="export-cancel-btn" class="btn-secondary">取消</button>
+      <button type="button" id="export-generalize-btn" class="btn-secondary">导出泛化数据包（CSV）</button>
+      <button type="button" id="export-detail-btn" class="btn-primary">导出标注结果表（Excel）</button>
     </div>
   </div>
 </div>
